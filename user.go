@@ -17,14 +17,16 @@ func NewUser(conn net.Conn) *User {
 		C:    make(chan string), //Message Channel for broadcast everybody
 		conn: conn,
 	}
-	//Start listen channel's message
+	//启动用户消息的监听，后台执行
 	go user.ListenChannel()
 
 	return user
 }
 
+//监听发送至user结构体的channel
 func (u *User) ListenChannel() {
 	for {
+		//消费来自ListenMsg中生产的消息
 		msg := <-u.C
 		u.conn.Write([]byte(msg + "\n")) //Response message to client
 	}

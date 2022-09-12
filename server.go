@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"sync"
@@ -54,28 +55,61 @@ func (s *Server) Start() {
 
 func (s *Server) Handler(conn net.Conn) {
 	log.Println("connection establish success")
+
+	//Add user to map
 	user := NewUser(conn)
 
+	//thread safety
 	s.mapLock.Lock()
 	s.OnlineUsers[user.Name] = user
 	s.mapLock.Unlock()
 
+	//user online to brodcast
 	s.Broadcast(user, "has been online!")
 
+	//Accept message from users(clients)
+	go func() {
+		buf := make([]byte, 1024)
+		for {
+			n, err := conn.Read(buf)
+			//Read data is zero means this user have been offline.
+			if n == 0 {
+				s.Broadcast(user, "have been offline!")
+				return
+			}
+			//EOF is a symbol that end of IO
+			if err != nil && err != io.EOF {
+				log.Println("read error:", err)
+				return
+			}
+			//convert byte buf to string that message who sended
+			msg := string(buf[:n-1])
+
+			//broadcast message who client sended
+			s.Broadcast(user, msg)
+
+		}
+	}()
+
+	//blocking goroutine
 	select {}
 }
 
-func (s *Server) Broadcast(user *User, msg string) {
-	sendMsg := "[" + user.Addr + "]" + user.Name + ":" + msg
+//生产者：生产消息
+func (s *Server) Broadcast(fromUser *User, msg string) {
+	sendMsg := "[" + fromUser.Addr + "]" + fromUser.Name + ":" + msg
 	s.Message <- sendMsg
 }
 
 //listen mesage and do brodcast to every body
+//消费者：监听消费消息
 func (s *Server) ListenMsg() {
 	for {
 		msg := <-s.Message
+		//加锁
 		s.mapLock.Lock()
 		for _, user := range s.OnlineUsers {
+			//将消息消费并发送到User的channel中，成为user.C的消息的生产者
 			user.C <- msg
 		}
 		s.mapLock.Unlock()
