@@ -57,24 +57,19 @@ func (s *Server) Handler(conn net.Conn) {
 	log.Println("connection establish success")
 
 	//Add user to map
-	user := NewUser(conn)
+	user := NewUser(conn, s)
 
-	//thread safety
-	s.mapLock.Lock()
-	s.OnlineUsers[user.Name] = user
-	s.mapLock.Unlock()
-
-	//user online to brodcast
-	s.Broadcast(user, "has been online!")
+	user.Online()
 
 	//Accept message from users(clients)
+	//消费来自client发送的消息
 	go func() {
 		buf := make([]byte, 1024)
 		for {
 			n, err := conn.Read(buf)
 			//Read data is zero means this user have been offline.
 			if n == 0 {
-				s.Broadcast(user, "have been offline!")
+				user.Offline()
 				return
 			}
 			//EOF is a symbol that end of IO
@@ -85,8 +80,7 @@ func (s *Server) Handler(conn net.Conn) {
 			//convert byte buf to string that message who sended
 			msg := string(buf[:n-1])
 
-			//broadcast message who client sended
-			s.Broadcast(user, msg)
+			user.DoMessage(msg)
 
 		}
 	}()
